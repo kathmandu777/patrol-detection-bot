@@ -3,7 +3,7 @@ import requests
 import RPi.GPIO as GPIO  # GPIO用のモジュールをインポート
 import time
 import os
-
+import sys
 
 class LINENotifyBot:
     API_URL = 'https://notify-api.line.me/api/notify'
@@ -24,6 +24,7 @@ class PatrolDetectionBot:
     # ポート番号の定義
     Trig = 27
     Echo = 18
+    DISTANCE_TO_DOOR = 300 # cm
 
     def __init__(self) -> None:
         # GPIOの設定
@@ -42,28 +43,39 @@ class PatrolDetectionBot:
         while GPIO.input(self.Echo) == GPIO.HIGH:  # GPIO18がHighの時間
             sig_on = time.time()
 
-        duration = sig_off - sig_on  # GPIO18がHighしている時間を算術
+        duration = sig_on - sig_off  # GPIO18がHighしている時間を算術
         distance = duration * 34000 / 2  # 距離を求める(cm)
         return distance
 
     def check(self) -> bool:
         cm = self.read_distance()  # HC-SR04で距離を測定する
-        if cm > 2 and cm < 400:  # 距離が2～400cmの場合
-            print("distance=", int(cm), "cm")  # 距離をint型で表示
+        print("distance=", int(cm), "cm")  # 距離をint型で表示
+        if cm >= self.DISTANCE_TO_DOOR:
+            return True
         return False  # TODO: change logic
 
 
 def main():
-    line_bot = LINENotifyBot(os.environ['LINE_NOTIFY_TOKEN'])
+    line_bot = LINENotifyBot(os.environ["LINE_NOTIFY_TOKEN"])
     patrol_bot = PatrolDetectionBot()
     while True:
-        if patrol_bot.check():
-            line_bot.send(message="巡回が来ました(立志玄関)")
-            break  # TODO: consider to break or not
-        time.sleep(0.1)
-
-    GPIO.cleanup()  # GPIOをクリーンアップ
-
+        try:
+            if patrol_bot.check():
+                line_bot.send(message="巡回が来ました(立志玄関)")
+                GPIO.cleanup()  # GPIOをクリーンアップ
+                print("detected patrol")
+                break
+            time.sleep(0.1)
+        except KeyboardInterrupt:
+            GPIO.cleanup()  # GPIOをクリーンアップ
+            print("keyboard interrupt")
+            sys.exit()
+        except Exception as e:
+            print(e)
+            GPIO.cleanup()  # GPIOをクリーンアップ
+            print("exit")
+            sys.exit()
+            
 
 if __name__ == '__main__':
     main()
